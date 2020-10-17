@@ -16,7 +16,7 @@
 # - IAM Roles
 # - Lambda Function
 # - SNS Topic
-# - CloudWatch Event
+# - CloudWatch Event to invoke Lambda function on a schedule
 Parameters:
   KeyPairName:
     Description: Name of an existing EC2 KeyPair for use with NAT Instance

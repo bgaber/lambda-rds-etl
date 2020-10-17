@@ -1,0 +1,667 @@
+---
+# Brian Gaber
+# Serverless (RDS, Lambda, VPC) Cloudformation Template
+# Stack can be created from the console or from the AWS CLI.
+# If stack is created from the console then resources will be created in the region shown in the upper right.
+# If stack is created from the AWS CLI then the region flag must be used or the stack will be created in the AWS default region (us-east-1).
+# Example of creating stack from the AWS CLI:
+# aws --region us-east-2 cloudformation create-stack --stack-name myteststack --template-body file://creating-lamp-vpc.json --parameters ParameterKey=KeyPairName,ParameterValue=us-east-2
+# This CloudFormation Template will create:
+# - VPC
+# - Public and Private Subnets in two AZs so four subnets
+# - Route Tables (Public and Private)
+# - Two Security Groups (RDS/Lambda, NAT)
+# - NAT Instance (source/destination check) or NAT Gateway
+# - RDS
+# - Lambda
+Parameters:
+  KeyPairName:
+    Description: Name of an existing EC2 KeyPair
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: "[-_ a-zA-Z0-9]*"
+    Type: AWS::EC2::KeyPair::KeyName
+    ConstraintDescription: can contain only alphanumeric characters, spaces, slashes and underscores.
+  VPCName:
+    Description: VPC Name
+    Default: Serverless VPC
+    Type: String
+  PublicSubnet1:
+    Description: First Public Subnet Description
+    Default: PublicSubnet1
+    Type: String
+  PublicSubnet2:
+    Description: Second Public Subnet Description
+    Default: PublicSubnet2
+    Type: String
+  PublicSubnet3:
+    Description: Third Public Subnet Description
+    Default: PublicSubnet3
+    Type: String
+  PrivateSubnet1:
+    Description: First Private Subnet Description
+    Default: PrivateSubnet1
+    Type: String
+  PrivateSubnet2:
+    Description: Second Private Subnet Description
+    Default: PrivateSubnet2
+    Type: String
+  PrivateSubnet3:
+    Description: Third Private Subnet Description
+    Default: PrivateSubnet3
+    Type: String
+  RDSLambdaSecurityGroupDescription:
+    Description: RDS Lambda Security Group Description
+    Default: RDS Lambda SG
+    Type: String
+  NATSecurityGroupDescription:
+    Description: NAT Security Group Description
+    Default: NAT SG
+    Type: String
+  PublicRouteDescription:
+    Description: Public Route Table Description
+    Default: Public RT
+    Type: String
+  PrivateRouteDescription:
+    Description: Private Route Table Description
+    Default: Private RT
+    Type: String
+  DBInstanceID:
+    Default: MySQLForETL
+    Description: My database instance name
+    Type: String
+    MinLength: '1'
+    MaxLength: '63'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: >-
+      Must begin with a letter and must not end with a hyphen or contain two
+      consecutive hyphens.
+  DBName:
+    Default: covid
+    Description: Name of the database
+    Type: String
+    MinLength: '1'
+    MaxLength: '64'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: Must begin with a letter and contain only alphanumeric characters.
+  DBUsername:
+    Description: Username for MySQL database access
+    Type: String
+    MinLength: '1'
+    MaxLength: '16'
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9]*'
+    ConstraintDescription: must begin with a letter and contain only alphanumeric characters.
+  DBPassword:
+    NoEcho: 'true'
+    Description: Password MySQL database access
+    Type: String
+    MinLength: '8'
+    MaxLength: '41'
+    AllowedPattern: '[a-zA-Z0-9]*'
+    ConstraintDescription: must contain only alphanumeric characters.
+        
+Mappings:
+  SubnetConfig:
+    VPC:
+      CIDR: 10.0.0.0/16
+    Public1:
+      CIDR: 10.0.0.0/24
+    Public2:
+      CIDR: 10.0.1.0/24
+    Public3:
+      CIDR: 10.0.2.0/24
+    Private1:
+      CIDR: 10.0.16.0/20
+    Private2:
+      CIDR: 10.0.32.0/20
+    Private3:
+      CIDR: 10.0.48.0/20
+  QuickSiteCIDRs:
+    us-east-1:
+      CIDR: 52.23.63.224/27
+    us-east-2:
+      CIDR: 52.15.247.160/27
+    us-west-2:
+      CIDR: 54.70.204.128/27
+    ap-south-1:
+      CIDR: 52.66.193.64/27
+    ap-northeast-2:
+      CIDR: 13.124.145.32/27
+    ap-southeast-1:
+      CIDR: 13.229.254.0/27 
+    ap-southeast-2:
+      CIDR: 54.153.249.96/27
+    ap-northeast-1:
+      CIDR: 13.113.244.32/27
+    eu-central-1:
+      CIDR: 35.158.127.192/27
+    eu-west-1:
+      CIDR: 52.210.255.224/27
+    eu-west-2:
+      CIDR: 35.177.218.0/27
+  NatRegionMap:
+    ca-central-1:
+      AMI: ami-02a1ff0e9b1a6d29c
+    us-east-1:
+      AMI: ami-184dc970
+    us-east-2:
+      AMI: ami-00d1f8201864cc10c
+    us-west-1:
+      AMI: ami-a98396ec
+    us-west-2:
+      AMI: ami-290f4119
+    eu-west-1:
+      AMI: ami-14913f63
+    eu-central-1:
+      AMI: ami-ae380eb3
+    sa-east-1:
+      AMI: ami-8122969c
+    ap-southeast-1:
+      AMI: ami-6aa38238
+    ap-southeast-2:
+      AMI: ami-893f53b3
+    ap-northeast-1:
+      AMI: ami-27d6e626
+
+Resources:
+  CustomVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !FindInMap [SubnetConfig, VPC, CIDR]
+      #CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+      - Key: Name
+        Value: !Ref VPCName
+      - Key: Application
+        Value: !Ref AWS::StackName
+  
+  # Create six subnets
+  PubSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !FindInMap [SubnetConfig, Public1, CIDR]
+      #CidrBlock: 10.0.0.0/24
+      #AvailabilityZone: "us-east-2a"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 0
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Name
+        Value: !Ref PublicSubnet1
+  PubSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !FindInMap [SubnetConfig, Public2, CIDR]
+      #CidrBlock: 10.0.1.0/24
+      #AvailabilityZone: "us-east-2b"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 1
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Name
+        Value: !Ref PublicSubnet2
+  PubSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !FindInMap [SubnetConfig, Public3, CIDR]
+      #CidrBlock: 10.0.1.0/24
+      #AvailabilityZone: "us-east-2b"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 2
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Name
+        Value: !Ref PublicSubnet3
+  PrivSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !FindInMap [SubnetConfig, Private1, CIDR]
+      #CidrBlock: 10.0.16.0/20
+      #AvailabilityZone: "us-east-2a"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 0
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Name
+        Value: !Ref PrivateSubnet1
+  PrivSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !FindInMap [SubnetConfig, Private2, CIDR]
+      #CidrBlock: 10.0.32.0/20
+      #AvailabilityZone: "us-east-2b"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 1
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Name
+        Value: !Ref PrivateSubnet2
+  PrivSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      CidrBlock: !FindInMap [SubnetConfig, Private3, CIDR]
+      #CidrBlock: 10.0.32.0/20
+      #AvailabilityZone: "us-east-2b"
+      AvailabilityZone: 
+        Fn::Select: 
+          - 2
+          - Fn::GetAZs: ""
+      Tags:
+      - Key: Name
+        Value: !Ref PrivateSubnet3
+        
+  # Internet Gateway
+  CustomIGW:
+    Type: AWS::EC2::InternetGateway
+    
+  # Attache IGW to VPC
+  AttachGateway:
+    DependsOn:
+    - CustomVPC
+    - CustomIGW
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      InternetGatewayId:
+        Ref: CustomIGW
+        
+  # Create two Route Tables (Public and Private)
+  PubRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      Tags:
+      - Key: Name
+        Value: !Ref PublicRouteDescription
+
+  PubSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PubSubnet1
+      RouteTableId:
+        Ref: PubRouteTable
+        
+  PubSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PubSubnet2
+      RouteTableId:
+        Ref: PubRouteTable
+  
+  PubSubnetRouteTableAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PubSubnet3
+      RouteTableId:
+        Ref: PubRouteTable
+        
+  PubRoute:
+    Type: AWS::EC2::Route
+    DependsOn: CustomIGW
+    Properties:
+       RouteTableId:
+         Ref: PubRouteTable
+       DestinationCidrBlock: 0.0.0.0/0
+       GatewayId:
+         Ref: CustomIGW
+        
+  PrivRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Ref: CustomVPC
+      Tags:
+      - Key: Name
+        Value: !Ref PrivateRouteDescription
+        
+  PrivSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivSubnet1
+      RouteTableId:
+        Ref: PrivRouteTable
+        
+  PrivSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivSubnet2
+      RouteTableId:
+        Ref: PrivRouteTable
+  
+  PrivSubnetRouteTableAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Ref: PrivSubnet3
+      RouteTableId:
+        Ref: PrivRouteTable
+        
+  PrivRoute:
+    Type: AWS::EC2::Route
+    DependsOn: CustomIGW
+    Properties:
+       RouteTableId:
+         Ref: PrivRouteTable
+       DestinationCidrBlock: 0.0.0.0/0
+       InstanceId:
+         Ref: NATinstance
+
+  # Create three security groups
+  # RDS and Lambda Security Group
+  RDSLambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS Lambda Security Group for Private Subnet
+      VpcId:
+         Ref: CustomVPC
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 3306
+        ToPort: 3306
+        SourceSecurityGroupId: !Ref NATSecurityGroup
+      - CidrIp: 10.0.0.0/24
+        FromPort: 22
+        IpProtocol: tcp
+        ToPort: 22
+      - CidrIp: 10.0.1.0/24
+        FromPort: 22
+        IpProtocol: tcp
+        ToPort: 22
+      - CidrIp: 10.0.2.0/24
+        FromPort: 22
+        IpProtocol: tcp
+        ToPort: 22
+  RDSLambdaBaseIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref RDSLambdaSecurityGroup
+      IpProtocol: -1
+      FromPort: -1
+      ToPort: -1
+      SourceSecurityGroupId: !GetAtt RDSLambdaSecurityGroup.GroupId
+
+  # QuickSite Security Group
+  QuickSiteSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Amazon-QuickSight-access
+      VpcId:
+         Ref: CustomVPC
+      SecurityGroupIngress:
+      - CidrIp: !FindInMap [QuickSiteCIDRs, !Ref 'AWS::Region', CIDR]
+        FromPort: 3306
+        IpProtocol: tcp
+        ToPort: 3306
+        Description: QuickSight SG for this region
+  # NAT security group
+  NATSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: NAT Security Group for Public Subnet
+      VpcId:
+         Ref: CustomVPC
+      SecurityGroupIngress:
+      - CidrIp: 10.0.0.0/16
+        FromPort: 80
+        IpProtocol: tcp
+        ToPort: 80
+      - CidrIp: 10.0.0.0/16
+        FromPort: 443
+        IpProtocol: tcp
+        ToPort: 443
+      - CidrIp: 0.0.0.0/0
+        FromPort: 22
+        IpProtocol: tcp
+        ToPort: 22
+
+  # NAT Instance (source/destination check)
+  NATinstance:
+    Type: AWS::EC2::Instance
+    DependsOn:
+    - PubSubnet2
+    - NATSecurityGroup
+    Properties:
+      InstanceType: t2.micro
+      AvailabilityZone: 
+        Fn::Select: 
+          - 1
+          - Fn::GetAZs: ""
+      KeyName: 
+        Ref: KeyPairName
+      SourceDestCheck: false
+      ImageId: !FindInMap [NatRegionMap, !Ref 'AWS::Region', AMI]
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          GroupSet:
+            - Ref: NATSecurityGroup
+          DeviceIndex: 0
+          DeleteOnTermination: true
+          SubnetId:
+            Ref: PubSubnet2
+      Tags:
+        - Key: Name
+          Value: NAT
+      UserData: 
+        Fn::Base64: |
+          #!/bin/bash -xe
+          yum update -y
+          yum install -y yum-cron
+          chkconfig yum-cron on
+
+  # RDS
+  RDSSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: DB Subnet Group
+      SubnetIds:
+        - !Ref PrivSubnet1
+        - !Ref PrivSubnet2
+        - !Ref PrivSubnet3
+
+  RDSmysqlDBinstance:
+    Type: AWS::RDS::DBInstance
+    DependsOn:
+    - RDSSubnetGroup
+    - RDSLambdaSecurityGroup
+    Properties:
+      DBInstanceIdentifier: !Ref DBInstanceID
+      DBInstanceClass: db.t2.micro
+      Engine: MySQL
+      AllocatedStorage: 5
+      PubliclyAccessible: False
+      DBName: !Ref DBName
+      MasterUsername: !Ref DBUsername
+      MasterUserPassword: !Ref DBPassword
+      BackupRetentionPeriod: 3
+      DBSubnetGroupName: !Ref RDSSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RDSLambdaSecurityGroup
+        - !Ref QuickSiteSecurityGroup
+  
+  # IAM Roles
+  LambdaRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      RoleName:
+        Fn::Sub: lambda-vpc-execution-role-${AWS::StackName}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "lambda.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+
+  # Lambda
+  ETLFunction: 
+    Type: AWS::Lambda::Function
+    Properties: 
+      Handler: covid_etl.lambda_handler
+      Role: !GetAtt [ LambdaRole, Arn ]
+      Code: 
+        S3Bucket: bg-us-west-2-bucket
+        S3Key: covid_etl.zip
+      Description: Covid ETL Lambda Function
+      Environment:
+        Variables:
+          dbEndpoint: !GetAtt RDSmysqlDBinstance.Endpoint.Address
+      Runtime: python3.7
+      Timeout: 180
+      VpcConfig: 
+        SecurityGroupIds: 
+          - !Ref RDSLambdaSecurityGroup
+        SubnetIds: 
+          - !Ref PrivSubnet1
+          - !Ref PrivSubnet2
+          - !Ref PrivSubnet3
+
+  # CloudWatch Event
+  ETLCWEventRule:
+    Type: AWS::Events::Rule
+    Properties: 
+      Description: Covid ETL
+      Name: Covid-ETL
+      ScheduleExpression: "rate(1 day)"
+      State: ENABLED
+      Targets: 
+        - Arn: !GetAtt [ ETLFunction, Arn ]
+          Id: Covid-ETL-Id
+  PermissionForEventsToInvokeLambda: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: !Ref ETLFunction
+      Action: "lambda:InvokeFunction"
+      Principal: "events.amazonaws.com"
+      SourceArn: !GetAtt [ ETLCWEventRule, Arn ]
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Network Configuration"
+        Parameters:
+          - VPCName
+          - PublicSubnet1
+          - PublicSubnet2
+          - PublicSubnet3
+          - PrivateSubnet1
+          - PrivateSubnet2
+          - PrivateSubnet3
+          - PublicRouteDescription
+          - PrivateRouteDescription
+      - Label:
+          default: "Security Groups"
+        Parameters:
+          - RDSLambdaSecurityGroupDescription
+          - NATSecurityGroupDescription
+      - Label:
+          default: "RDS Database"
+        Parameters:
+          - DBInstanceID
+          - DBName
+          - DBUsername
+          - DBPassword
+    ParameterLabels:
+      VPCName:
+        default: "What is the name of new VPC?"
+      PublicSubnet1:
+        default: "What is the name of this public subnet?"
+      PublicSubnet2:
+        default: "What is the name of this public subnet?"
+      PublicSubnet3:
+        default: "What is the name of this public subnet?"
+      PrivateSubnet1:
+        default: "What is the name of this private subnet?"
+      PrivateSubnet2:
+        default: "What is the name of this private subnet?"
+      PrivateSubnet3:
+        default: "What is the name of this private subnet?"
+      PublicRouteDescription:
+        default: "What is the name of the public route table?"
+      PrivateRouteDescription:
+        default: "What is the name of the private route table?"
+      RDSLambdaSecurityGroupDescription:
+        default: "What is the name for the RDS Lambda Security Group?"
+      NATSecurityGroupDescription:
+        default: "What is the name for the NAT Security Group?"
+      DBName:
+        default: "What is the name for the RDS Database?"
+      KeyPairName:
+        default: "Select EC2 Key Pair Name"
+        
+Outputs:
+  VPCID:
+    Description: VPC Information
+    Value: !Ref CustomVPC
+  IGWID:
+    Description: IGW Information
+    Value: !Ref CustomIGW
+  RDSLambdaSGID:
+    Description: RDS Lambda Security Group Information
+    Value: !Ref RDSLambdaSecurityGroup
+  NATSGID:
+    Description: NAT Security Group Information
+    Value: !Ref NATSecurityGroup
+  NATID:
+    Description: NAT Instance Information
+    Value: !Ref NATinstance
+  NATPublicIP:
+    Description: Public IP address of the NAT server
+    Value:
+      !GetAtt NATinstance.PublicIp
+  NATPublicDnsName:
+    Description: Public DNS Name of the NAT server
+    Value:
+      !GetAtt NATinstance.PublicDnsName
+  RDSID:
+    Description: RDS DB Information
+    Value: !Ref RDSmysqlDBinstance
+  RDSEndPtAddress:
+    Description: RDS Endpoint Address
+    Value:
+      !GetAtt RDSmysqlDBinstance.Endpoint.Address
+  RDSEndPtPort:
+    Description: RDS Endpoint Port
+    Value:
+      !GetAtt RDSmysqlDBinstance.Endpoint.Port
+  LambdaArn:
+    Description: Arn of the ETL Lambda Function
+    Value:
+      !GetAtt ETLFunction.Arn
+  IAMRoleArn:
+    Description: Arn of the IAM Lambda Role
+    Value:
+      !GetAtt LambdaRole.Arn
+  MyStacksRegion:
+    Value: !Ref "AWS::Region"

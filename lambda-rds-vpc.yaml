@@ -397,29 +397,16 @@ Resources:
       RouteTableId:
         Ref: PrivRouteTable
         
-  # Private Route for NAT INstance
+  # Private Route for NAT Instance or NAT Gateway
   PrivRoute:
     Type: AWS::EC2::Route
     Condition: CreateNATinstance
     DependsOn: CustomIGW
     Properties:
-       RouteTableId:
-         Ref: PrivRouteTable
-       DestinationCidrBlock: 0.0.0.0/0
-       InstanceId:
-         Ref: NATinstance
-
-  # Private Route for NAT Gateway
-  PrivRoute:
-    Type: AWS::EC2::Route
-    Condition: CreateNATgateway
-    DependsOn: CustomIGW
-    Properties:
-      RouteTableId:
-        Ref: PrivRouteTable
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId:
-        Ref: NATgateway
+      RouteTableId: !Ref PrivRouteTable
+      InstanceId: !If [CreateNATinstance, !Ref NATinstance, AWS::NoValue]
+      NatGatewayId: !If [CreateNATgateway, !Ref NATgateway, AWS::NoValue]
 
   # Create three security groups
   # RDS and Lambda Security Group

@@ -120,9 +120,8 @@ Parameters:
     ConstraintDescription: Must specify NAT Instance or NAT Gateway.
   SNSemail:
     Description: e-mail address to send notifications
-    Default: SNS e-mail address
     Type: String
-    AllowedPattern: '^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$'
+    AllowedPattern: '^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
     ConstraintDescription: Must be a valid email address.
         
 Mappings:

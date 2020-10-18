@@ -118,6 +118,12 @@ Parameters:
       - NAT Instance
       - NAT Gateway
     ConstraintDescription: Must specify NAT Instance or NAT Gateway.
+  SNSemail:
+    Description: e-mail address to send notifications
+    Default: SNS e-mail address
+    Type: String
+    AllowedPattern: '^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+$'
+    ConstraintDescription: Must be a valid email address.
         
 Mappings:
   SubnetConfig:
@@ -619,7 +625,7 @@ Resources:
   mySNSsubscription:
     Type: AWS::SNS::Subscription
     Properties:
-      Endpoint: brian.gaber@primus.ca
+      Endpoint: !Ref SNSemail
       Protocol: email
       TopicArn: !Ref mySNSTopic
 

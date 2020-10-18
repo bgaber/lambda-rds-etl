@@ -123,7 +123,13 @@ Parameters:
     Type: String
     AllowedPattern: '^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$'
     ConstraintDescription: Must be a valid email address.
-        
+  SNStopic:
+    Description: SNS Topic Name
+    Default: covid-etl-challenge
+    Type: String
+    AllowedPattern: '[a-zA-Z0-9_-]{1,255}'
+    ConstraintDescription: Topic names must include only uppercase and lowercase ASCII letters, numbers, underscores, and hyphens, and must be between 1 and 256 characters long.
+
 Mappings:
   SubnetConfig:
     VPC:
@@ -604,7 +610,7 @@ Resources:
           dbUsername: !Ref DBUsername
           dbPassword: !Ref DBPassword
           dbName: !Ref DBName
-          snsTopic: !Ref mySNSTopic
+          snsTopic: !Ref SNSTopicResource
       Runtime: python3.7
       Timeout: 180
       VpcConfig: 
@@ -616,17 +622,17 @@ Resources:
           - !Ref PrivSubnet3
 
   # SNS Topic
-  mySNSTopic:
+  SNSTopicResource:
     Type: AWS::SNS::Topic
     Properties:
-      TopicName: covid-etl-challenge
+      TopicName: !Ref SNStopic
 
   mySNSsubscription:
     Type: AWS::SNS::Subscription
     Properties:
       Endpoint: !Ref SNSemail
       Protocol: email
-      TopicArn: !Ref mySNSTopic
+      TopicArn: !Ref SNSTopicResource
 
   # CloudWatch Event
   CWEventRuleToInvokeLambda:
@@ -680,6 +686,11 @@ Metadata:
           - DBName
           - DBUsername
           - DBPassword
+      - Label:
+          default: "SNS email notification"
+        Parameters:
+          - SNSemail
+          - SNStopic
     ParameterLabels:
       VPCName:
         default: "What is the name of new VPC?"

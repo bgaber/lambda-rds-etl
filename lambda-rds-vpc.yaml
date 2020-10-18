@@ -400,7 +400,6 @@ Resources:
   # Private Route for NAT Instance or NAT Gateway
   PrivRoute:
     Type: AWS::EC2::Route
-    Condition: CreateNATinstance
     DependsOn: CustomIGW
     Properties:
       DestinationCidrBlock: 0.0.0.0/0

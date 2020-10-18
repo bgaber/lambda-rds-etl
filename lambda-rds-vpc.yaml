@@ -405,8 +405,8 @@ Resources:
     Properties:
       DestinationCidrBlock: 0.0.0.0/0
       RouteTableId: !Ref PrivRouteTable
-      InstanceId: !If [CreateNATinstance, !Ref NATinstance, AWS::NoValue]
-      NatGatewayId: !If [CreateNATgateway, !Ref NATgateway, AWS::NoValue]
+      InstanceId: !If [CreateNATinstance, !Ref NATinstance, !Ref 'AWS::NoValue']
+      NatGatewayId: !If [CreateNATgateway, !Ref NATgateway, !Ref 'AWS::NoValue']
 
   # Create three security groups
   # RDS and Lambda Security Group

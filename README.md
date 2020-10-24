@@ -36,7 +36,7 @@ To ensure that your code can handle unexpected situations, include unit tests fo
 
 Infrastructure As Code (IaC)
 ----------------------------
-All infrastructure (Lambda function, CloudWatch rule, SNS trigger, database, etc) is defined in code CloudFormation (lambda-rds-vpc.yaml).
+All infrastructure (Lambda function, CloudWatch rule, SNS trigger, database, etc) is defined in CloudFormation code (lambda-rds-vpc.yaml).
 
 DASHBOARD
 ---------

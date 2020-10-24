@@ -1,6 +1,3 @@
-# lambda-rds-etl
-Repo for Event-Driven Python on AWS
-
 This repository contains a Python compute job that runs on a daily schedule triggered it from a once-daily CloudWatch rule.
 
 EXTRACTION

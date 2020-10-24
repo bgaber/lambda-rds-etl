@@ -34,8 +34,8 @@ TESTS
 -----
 To ensure that your code can handle unexpected situations, include unit tests for your code that substitute invalid data for the COVID-19 CSV files, and confirm that your code responds correctly.
 
-Infrasturture As Code (IaC)
----------------------------
+Infrastructure As Code (IaC)
+----------------------------
 All infrastructure (Lambda function, CloudWatch rule, SNS trigger, database, etc) is defined in code CloudFormation (lambda-rds-vpc.yaml).
 
 DASHBOARD

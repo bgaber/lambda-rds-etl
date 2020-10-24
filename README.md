@@ -1,3 +1,6 @@
+Event-Driven Python ETL on AWS
+------------------------------
+
 This repository contains a Python compute job that runs on a daily schedule triggered it from a once-daily CloudWatch rule.
 
 EXTRACTION

@@ -3,6 +3,8 @@ Event-Driven Python ETL on AWS
 
 This repository contains a Python compute job that runs on a daily schedule triggered it from a once-daily CloudWatch rule.
 
+![Alt text](lambda-rds-qs-etl.png?raw=true "Event-Driven Lambda RDS ETL")
+
 EXTRACTION
 ----------
 The Python code downloads a CSV file from Github which contains a daily dump of US COVID-19 data from a repository maintained by the New York Times. Every day, the file updates with an additional row of data.
